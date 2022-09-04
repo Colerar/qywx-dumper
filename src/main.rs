@@ -16,8 +16,10 @@ use tokio::spawn;
 use tokio::time::sleep;
 
 use crate::api::WxClient;
+use crate::util::ReplaceSpecial;
 
 mod api;
+mod util;
 
 #[derive(Parser, Debug, Clone)]
 #[clap(name = "qywx-dumper", bin_name = "qywx-dumper", version, about, long_about = None)]
@@ -171,7 +173,9 @@ async fn main() -> Result<()> {
             }
           };
 
-          let path = PathBuf::from(format!("departments/members-{}-{}.json", x.id, x.name));
+          let path = PathBuf::from(
+            format!("departments/members-{}-{}.json", x.id, x.name).replace_special_char(),
+          );
           let file = match File::create(&path) {
             Ok(file) => file,
             Err(err) => {
@@ -213,11 +217,8 @@ async fn main() -> Result<()> {
   let tag_job = || {
     let wx = wx.clone();
     async move {
-      let resp = wx
-        .get_tags()
-        .await
-        .context("Failed to get departments list")?;
-      info!("Total {} departments to query", resp.tags.len());
+      let resp = wx.get_tags().await.context("Failed to get tags list")?;
+      info!("Total {} tags to query", resp.tags.len());
       let file = File::create("tags.json").context("Failed to create tags.json")?;
       let mut buf_writer = BufWriter::new(file);
       buf_writer
@@ -250,7 +251,8 @@ async fn main() -> Result<()> {
             return;
           }
 
-          let path = PathBuf::from(format!("tags/members-{}-{}.json", x.id, x.name));
+          let path =
+            PathBuf::from(format!("tags/members-{}-{}.json", x.id, x.name).replace_special_char());
           let file = match File::create(&path) {
             Ok(file) => file,
             Err(err) => {
