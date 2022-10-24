@@ -41,6 +41,7 @@ struct Cli {
   #[arg(env = "WX_CORP_TOKEN", value_parser, value_name = "SECRET")]
   corp_token: Option<String>,
   /// Custom user agent, optional
+  #[arg(short = 'u', long)]
   user_agent: Option<String>,
   /// Sending request through a proxy, http, https, socks5 are supported
   #[arg(short = 'p', long, value_parser, value_name = "URL")]
@@ -51,8 +52,6 @@ struct Cli {
   /// Proxy password, optional
   #[arg(long, value_parser, alias = "password", value_name = "PWD")]
   proxy_password: Option<String>,
-  #[clap(flatten)]
-  verbose: Verbosity<DefaultLevel>,
   /// always overwrite files
   #[arg(short = 'y', long, value_parser, alias = "yes")]
   overwrite: bool,
@@ -62,6 +61,8 @@ struct Cli {
   /// Delay for batch requests, in ms
   #[arg(short = 'd', long, value_parser, default_value_t = 200)]
   delay: u64,
+  #[clap(flatten)]
+  verbose: Verbosity<DefaultLevel>,
 }
 
 #[tokio::main]
@@ -71,6 +72,11 @@ async fn main() -> Result<()> {
     .filter_level(args.verbose.log_level_filter())
     .init();
   debug!("Args: {args:?}");
+
+  if (args.corp_id.is_none() && args.corp_secret.is_none()) && args.corp_token.is_none() {
+    error!("For login, you must provide: (ID and Secret) or Token.");
+    exit(1);
+  }
 
   if args.output.exists() {
     if args.overwrite {
