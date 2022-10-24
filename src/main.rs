@@ -7,7 +7,7 @@ use std::time::Duration;
 use std::{env, fs};
 
 use anyhow::{Context, Result};
-use clap::{ArgAction, ArgGroup, Parser, ValueHint};
+use clap::{Parser, ValueHint};
 use clap_verbosity_flag::Verbosity;
 use itertools::Itertools;
 use log::{debug, error, info, warn};
@@ -23,46 +23,44 @@ mod util;
 
 #[derive(Parser, Debug, Clone)]
 #[clap(name = "qywx-dumper", bin_name = "qywx-dumper", version, about, long_about = None)]
-// [proxy-user, proxy-pwd] requires [proxy], and must be co-occurring
-#[clap(group = ArgGroup::new("proxy-auth1").args(&["proxy-user"]).requires_all(&["proxy", "proxy-password"]))]
-#[clap(group = ArgGroup::new("proxy-auth2").args(&["proxy-password"]).requires_all(&["proxy", "proxy-user"]))]
 struct Cli {
-  /// Print version
-  #[clap(short = 'V', long, value_parser, action = ArgAction::Version)]
-  version: Option<bool>,
   /// Output directory
-  #[clap(short = 'O', long, value_parser, value_name = "DIR")]
-  #[clap(value_hint = ValueHint::DirPath, default_value = "output")]
+  #[arg(short = 'O', long, value_parser, value_name = "DIR")]
+  #[arg(value_hint = ValueHint::DirPath, default_value = "output")]
   output: PathBuf,
   /// Corporation ID, every enterprise has one
-  #[clap(short = 'i', long, required = true)]
-  #[clap(env = "WX_CORP_ID", value_parser, value_name = "ID")]
-  corp_id: String,
+  #[arg(short = 'i', long)]
+  #[arg(env = "WX_CORP_ID", value_parser, value_name = "ID")]
+  corp_id: Option<String>,
   /// Corporation Secret, every app has one
-  #[clap(short = 's', long, required = true)]
-  #[clap(env = "WX_CORP_SECRET", value_parser, value_name = "SECRET")]
-  corp_secret: String,
+  #[arg(short = 's', long)]
+  #[arg(env = "WX_CORP_SECRET", value_parser, value_name = "SECRET")]
+  corp_secret: Option<String>,
+  /// Token, requires: (ID and Secret) or TOKEN
+  #[arg(short = 't', long)]
+  #[arg(env = "WX_CORP_TOKEN", value_parser, value_name = "SECRET")]
+  corp_token: Option<String>,
   /// Custom user agent, optional
   user_agent: Option<String>,
   /// Sending request through a proxy, http, https, socks5 are supported
-  #[clap(short = 'p', long, value_parser, value_name = "URL")]
+  #[arg(short = 'p', long, value_parser, value_name = "URL")]
   proxy: Option<Url>,
   /// Proxy username, optional
-  #[clap(long, value_parser, alias = "user", value_name = "USER")]
+  #[arg(long, value_parser, alias = "user", value_name = "USER")]
   proxy_user: Option<String>,
   /// Proxy password, optional
-  #[clap(long, value_parser, alias = "password", value_name = "PWD")]
+  #[arg(long, value_parser, alias = "password", value_name = "PWD")]
   proxy_password: Option<String>,
   #[clap(flatten)]
   verbose: Verbosity<DefaultLevel>,
   /// always overwrite files
-  #[clap(short = 'y', long, value_parser, alias = "yes")]
+  #[arg(short = 'y', long, value_parser, alias = "yes")]
   overwrite: bool,
   /// Fetch departments members recursively
-  #[clap(short = 'r', long, value_parser, default_value_t = false)]
+  #[arg(short = 'r', long, value_parser, default_value_t = false)]
   recursive: bool,
   /// Delay for batch requests, in ms
-  #[clap(short = 'd', long, value_parser, default_value_t = 200)]
+  #[arg(short = 'd', long, value_parser, default_value_t = 200)]
   delay: u64,
 }
 
@@ -111,10 +109,21 @@ async fn main() -> Result<()> {
     }
   };
 
-  if let Err(err) = wx.login(&*args.corp_id, &*args.corp_secret).await {
-    error!("Failed to login with provided id and secret: {:?}", err);
+  if args.corp_id.is_some() && args.corp_secret.is_some() {
+    if let Err(err) = wx
+      .login(&*args.corp_id.unwrap(), &*args.corp_secret.unwrap())
+      .await
+    {
+      error!("Failed to login with provided id and secret: {:?}", err);
+      exit(1);
+    };
+  } else if args.corp_token.is_some() {
+    let mut token = wx.token.write().unwrap();
+    *token = args.corp_token;
+  } else {
+    error!("For login, you must provide: (ID and Secret) or Token.");
     exit(1);
-  };
+  }
 
   info!("Get token successfully");
 
@@ -173,9 +182,10 @@ async fn main() -> Result<()> {
             }
           };
 
-          let path = PathBuf::from(
-            format!("departments/members-{}-{}.json", x.id, x.name).replace_special_char(),
-          );
+          let path = PathBuf::from(format!(
+            "departments/{}",
+            format!("members-{}-{}.json", x.id, x.name).replace_special_char()
+          ));
           let file = match File::create(&path) {
             Ok(file) => file,
             Err(err) => {
@@ -251,8 +261,10 @@ async fn main() -> Result<()> {
             return;
           }
 
-          let path =
-            PathBuf::from(format!("tags/members-{}-{}.json", x.id, x.name).replace_special_char());
+          let path = PathBuf::from(format!(
+            "tags/{}",
+            format!("members-{}-{}.json", x.id, x.name).replace_special_char()
+          ));
           let file = match File::create(&path) {
             Ok(file) => file,
             Err(err) => {

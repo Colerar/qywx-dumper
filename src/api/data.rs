@@ -93,7 +93,7 @@ pub struct DepartmentMember {
   pub alias: String,
   pub is_leader_in_dept: Vec<u32>,
   pub thumb_avatar: String,
-  pub biz_mail: String,
+  pub biz_mail: Option<String>,
   #[serde(rename = "userid")]
   pub user_id: String,
   pub extattr: HashMap<String, Value>,
