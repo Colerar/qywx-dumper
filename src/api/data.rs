@@ -43,6 +43,53 @@ pub struct AgentBasic {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct AgentDetail {
+  #[serde(rename = "errcode")]
+  pub code: Option<i32>,
+  #[serde(rename = "errmsg")]
+  pub msg: Option<String>,
+  #[serde(rename = "agentid")]
+  pub agent_id: Option<u32>,
+  pub square_logo_url: Option<String>,
+  pub description: Option<String>,
+  pub allow_userinfos: Option<AllowUserInfos>,
+  #[serde(rename = "allow_partys")]
+  pub allow_parties: Option<AllowParties>,
+  pub allow_tags: Option<AllowTags>,
+  pub close: Option<u32>,
+  pub redirect_domain: Option<String>,
+  pub report_location_flag: Option<u32>,
+  #[serde(rename = "isreportenter")]
+  pub is_report_enter: Option<u32>,
+  pub home_url: Option<String>,
+  #[serde(rename = "customized_publish_status")]
+  pub publish_status: Option<u32>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AllowUserInfos {
+  pub user: Vec<User>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct User {
+  #[serde(rename = "userid")]
+  pub user_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AllowParties {
+  #[serde(rename = "partyid")]
+  pub party_id: Vec<u32>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AllowTags {
+  #[serde(rename = "tagid")]
+  pub tag_id: Vec<u32>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct DepartmentResp {
   #[serde(rename = "errcode")]
   pub code: Option<i32>,

@@ -9,6 +9,8 @@ use crate::api::data::{
   TagsResp,
 };
 
+use self::data::AgentDetail;
+
 const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 12_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.6 Safari/605.1.15";
 
 mod data;
@@ -172,6 +174,22 @@ impl WxClient {
       .await
       .context("Failed to deserialize TagMembersResp")
   }
+
+  pub async fn get_agent_detail(&self, agent_id: u32) -> Result<AgentDetail> {
+    self
+      .client()
+      .get("https://qyapi.weixin.qq.com/cgi-bin/agent/get")
+      .query(&[
+        ("access_token", self.token()?),
+        ("agentid", agent_id.to_string()),
+      ])
+      .send()
+      .await
+      .context("Failed to get AgentDetail")?
+      .json::<AgentDetail>()
+      .await
+      .context("Failed to deserialize AgentDetail")
+  }
 }
 
 #[cfg(test)]
@@ -255,6 +273,18 @@ mod tests {
     debug!("{tags:?}");
     for x in tags.tags.into_iter().take(20) {
       let members = cli.get_tag_members(x.id).await;
+      debug!("{members:?}");
+    }
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn get_agent_list() -> Result<()> {
+    let cli = client().await?;
+    let agents = cli.get_agent_list().await?;
+    debug!("{agents:?}");
+    for x in agents.agent_list.into_iter().take(1) {
+      let members = cli.get_agent_detail(x.id).await;
       debug!("{members:?}");
     }
     Ok(())

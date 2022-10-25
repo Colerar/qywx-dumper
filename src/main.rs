@@ -123,6 +123,10 @@ async fn main() -> Result<()> {
       error!("Failed to login with provided id and secret: {:?}", err);
       exit(1);
     };
+    let token = wx.token.read().expect("Lock Posioned");
+    if let Some(token) = token.as_ref() {
+      info!("Get token successfully: {}", token);
+    }
   } else if args.corp_token.is_some() {
     let mut token = wx.token.write().unwrap();
     *token = args.corp_token;
@@ -131,32 +135,87 @@ async fn main() -> Result<()> {
     exit(1);
   }
 
-  info!("Get token successfully");
-
-  let agent_job = || {
+  let agent_job = {
     let wx = wx.clone();
     async move {
       let agents = wx
         .get_agent_list()
         .await
         .context("Failed to get agent list")?;
-      let agent_to_print = agents
-        .agent_list
-        .iter()
-        .map(|i| format!("{} - {}", i.id, i.name))
-        .join(", ");
-      info!("Agents: {agent_to_print}");
-      let file = File::create("agents.json").context("Failed to create agents.json")?;
-      let mut buf_writer = BufWriter::new(file);
-      buf_writer
-        .write(&*serde_json::to_vec_pretty(&agents).context("Failed to serialize")?)
-        .context("Failed to write json")?;
+
+      {
+        let agent_to_print = agents
+          .agent_list
+          .iter()
+          .map(|i| format!("{} - {}", i.id, i.name))
+          .join(", ");
+        info!("Agents: {agent_to_print}");
+        let file = File::create("agents.json").context("Failed to create agents.json")?;
+        let mut buf_writer = BufWriter::new(file);
+        buf_writer
+          .write(&*serde_json::to_vec_pretty(&agents).context("Failed to serialize")?)
+          .context("Failed to write json")?;
+      }
+
+      fs::create_dir_all("agents").context("Failed to create folder ./agents")?;
+
+      let mut vec = Vec::new();
+      for x in agents.agent_list {
+        let wx = wx.clone();
+        let handle = spawn(async move {
+          let resp = match wx.get_agent_detail(x.id).await {
+            Ok(resp) => resp,
+            Err(err) => {
+              error!(
+                "Failed to get agent details: {} - {}: {:?}",
+                x.id, x.name, err
+              );
+              return;
+            }
+          };
+          let path = PathBuf::from(format!(
+            "agents/{}",
+            format!("agent-{}-{}.json", x.id, x.name).replace_special_char()
+          ));
+          let file = match File::create(&path) {
+            Ok(file) => file,
+            Err(err) => {
+              error!("Failed to create {}: {err:?}", path.to_string_lossy());
+              return;
+            }
+          };
+          let json = match serde_json::to_vec_pretty(&resp).context("Failed to serialize") {
+            Ok(json) => json,
+            Err(err) => {
+              error!("Failed to serialize json: {err:?}");
+              return;
+            }
+          };
+          let mut buf_writer = BufWriter::new(file);
+          match buf_writer.write(&*json) {
+            Ok(_) => info!(
+              "Successfully save agent details to {}",
+              path.to_string_lossy(),
+            ),
+            Err(err) => error!(
+              "Failed to save agent details to {}: {err:?}",
+              path.to_string_lossy()
+            ),
+          };
+        });
+        vec.push(handle);
+        sleep(Duration::from_millis(args.delay)).await;
+      }
+      for x in vec {
+        x.await?;
+      }
+
       let result: Result<()> = Ok(());
       result
     }
   };
 
-  let department_job = || {
+  let department_job = {
     let wx = wx.clone();
     async move {
       let resp = wx
@@ -230,7 +289,7 @@ async fn main() -> Result<()> {
     }
   };
 
-  let tag_job = || {
+  let tag_job = {
     let wx = wx.clone();
     async move {
       let resp = wx.get_tags().await.context("Failed to get tags list")?;
@@ -314,9 +373,9 @@ async fn main() -> Result<()> {
     }
   };
 
-  let agent_job = spawn(agent_job());
-  let department_job = spawn(department_job());
-  let tag_job = spawn(tag_job());
+  let agent_job = spawn(agent_job);
+  let department_job = spawn(department_job);
+  let tag_job = spawn(tag_job);
 
   if let Err(err) = agent_job.await? {
     error!("Fetch agent list job failed: {err:?}");
